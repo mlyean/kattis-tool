@@ -28,4 +28,5 @@ executable kat
                      , time >= 1.8
                      , utility-ht >= 0.0.14
                      , zip >= 1.2
+  ghc-options:         -O3 -threaded
   other-modules:       Paths_kattis_tool
