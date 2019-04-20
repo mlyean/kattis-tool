@@ -6,8 +6,10 @@ module Main where
 import Codec.Archive.Zip (unpackInto, withArchive)
 import Control.Exception
 import Control.Monad
+import Control.Monad.Loops
 import qualified Data.ByteString as BS
 import qualified Data.Conduit.List as CL
+import Data.Default
 import Data.Hashable (hash)
 import Data.List
 import Data.Maybe.HT (toMaybe)
@@ -25,18 +27,44 @@ import System.IO
 import System.Process
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
+--------------------------------------------------------------------------------
+-- DATA TYPES
+--------------------------------------------------------------------------------
 type ProblemID = String
 
 type TestCase = (T.Text, [T.Text])
 
+data Flags = Flags
+  { abortOnFail :: Bool
+  , floatPrec :: Int
+  }
+
+instance Default Flags where
+  def = Flags {abortOnFail = False, floatPrec = 6}
+
+--------------------------------------------------------------------------------
+-- CONSTANTS
+--------------------------------------------------------------------------------
+authors :: String
+authors = "mlyean"
+
 kattisDir :: FilePath
 kattisDir = "/tmp/kattis/"
 
+--------------------------------------------------------------------------------
+-- FILE HELPER FUNCTIONS
+--------------------------------------------------------------------------------
 testCaseUrl :: ProblemID -> String
 testCaseUrl pId =
   showString "https://open.kattis.com/problems/" . showString pId $
   "/file/statement/samples.zip"
 
+problemDir :: ProblemID -> FilePath
+problemDir pId = showString kattisDir . showString pId $ "/"
+
+--------------------------------------------------------------------------------
+-- FILES MANAGEMENT
+--------------------------------------------------------------------------------
 getTestCases :: ProblemID -> IO (Maybe String)
 getTestCases pId = do
   createDirectoryIfMissing True kattisDir
@@ -68,12 +96,25 @@ getTestCases pId = do
         else removeFile tmpOutFile
       return $ toMaybe success outFile
 
-problemDir :: ProblemID -> FilePath
-problemDir pId = showString kattisDir . showString pId $ "/"
-
 extractTestCase :: ProblemID -> FilePath -> IO ()
 extractTestCase pId zipPath = withArchive zipPath (unpackInto $ problemDir pId)
 
+getAndExtract :: ProblemID -> IO ()
+getAndExtract pId = do
+  res <- getTestCases pId
+  maybe
+    (putStrLn "Error: Failed to retrieve test cases." >> exitFailure)
+    (extractTestCase pId)
+    res
+
+cleanTmp :: IO ()
+cleanTmp = do
+  dirExists <- doesDirectoryExist kattisDir
+  when dirExists $ removeDirectoryRecursive kattisDir
+
+--------------------------------------------------------------------------------
+-- TEST CASE PARSING
+--------------------------------------------------------------------------------
 listTestCases :: ProblemID -> IO [(FilePath, FilePath)]
 listTestCases pId = do
   files <- sort <$> getDirectoryContents (problemDir pId)
@@ -92,13 +133,31 @@ readTestCases pId = do
       y' <- map T.stripEnd . T.lines <$> T.readFile y
       return (x', y')
 
+countTestCases :: ProblemID -> IO Int
+countTestCases pId = length <$> listTestCases pId
+
+--------------------------------------------------------------------------------
+-- TEXT FORMATTING
+--------------------------------------------------------------------------------
 titleFormat :: PP.Doc -> PP.Doc
 titleFormat x = PP.text "--" PP.<+> x PP.<+> PP.text "--"
 
+--------------------------------------------------------------------------------
+-- MISCELLANEOUS
+--------------------------------------------------------------------------------
 getExitCode :: ExitCode -> Int
 getExitCode (ExitFailure n) = n
 getExitCode ExitSuccess = 0
 
+parseFlags :: [String] -> Flags
+parseFlags ("-1":xs) = (parseFlags xs) {abortOnFail = True}
+parseFlags (('-':'p':'=':prec):xs) = (parseFlags xs) {floatPrec = read prec}
+parseFlags (_:xs) = parseFlags xs
+parseFlags [] = def
+
+--------------------------------------------------------------------------------
+-- TEST CASE RUNNING
+--------------------------------------------------------------------------------
 runTestCase :: FilePath -> TestCase -> IO Bool
 runTestCase execPath (inp, ans) =
   withCreateProcess
@@ -145,20 +204,15 @@ runTestCase execPath (inp, ans) =
     indent =
       PP.vsep . map (\x -> PP.blue PP.rangle PP.<+> (PP.text . T.unpack $ x))
 
-runTestCases :: ProblemID -> FilePath -> IO Int
-runTestCases pId execPath = do
+runAllTestCases :: ProblemID -> FilePath -> IO Int
+runAllTestCases pId execPath = do
   testCases <- readTestCases pId
   outcomes <- mapM (runTestCase execPath) testCases
   return $ sum . map fromEnum $ outcomes
 
-countTestCases :: ProblemID -> IO Int
-countTestCases pId = length <$> listTestCases pId
-
-cleanTmp :: IO ()
-cleanTmp = do
-  dirExists <- doesDirectoryExist kattisDir
-  when dirExists $ removeDirectoryRecursive kattisDir
-
+--------------------------------------------------------------------------------
+-- USER INTERFACE
+--------------------------------------------------------------------------------
 helpText :: String -> PP.Doc
 helpText prog =
   PP.vsep
@@ -175,12 +229,13 @@ helpText prog =
   PP.line
   where
     description = "Test Kattis solutions locally"
-    usageStr = "[ --help | --version | COMMAND ] [ OPTIONS ]"
+    usageStr = "[ --help | --version | COMMAND [ OPTIONS ] ]"
     optionInfo =
       map
         f
         [ ("--help, -h", ["Show this help message."])
         , ("--version, -v", ["Show program version."])
+        , ("-1", ["Abort test on first failure"])
         ]
     commandInfo =
       map
@@ -204,15 +259,27 @@ verText :: String -> PP.Doc
 verText prog =
   PP.text prog PP.<+> PP.blue (PP.text $ showVersion version) <> PP.line <>
   PP.text "Author:" PP.<+>
-  PP.blue (PP.text author) <>
+  PP.blue (PP.text authors) <>
   PP.line
-  where
-    author = "mlyean"
 
 showVer :: IO ()
 showVer = do
   prog <- getProgName
   PP.putDoc $ verText prog
+
+testAndSummarize pId exec = do
+  getAndExtract pId
+  total <- countTestCases pId
+  totalFailed <- runAllTestCases pId exec
+  putChar '\n'
+  showSummary total totalFailed
+
+showSummary t f = do
+  PP.putDoc $ titleFormat (PP.text "SUMMARY") <> PP.line
+  if f == 0
+    then putStrLn "All test cases passed!"
+    else putStrLn $
+         showInt f . showString " of " . showInt t $ " test cases failed"
 
 main :: IO ()
 main = do
@@ -222,26 +289,7 @@ main = do
     ("--help":_) -> showHelp
     ["-v"] -> showVer
     ["--version"] -> showVer
-    ("test":pId:exec:opt) -> testAndSummarize pId exec
-    ("get":pId:opt) -> getAndExtract pId
-    ("clean":opt) -> cleanTmp
+    ("test":pId:exec:flags) -> testAndSummarize pId exec
+    ("get":pId:flags) -> getAndExtract pId
+    ("clean":flags) -> cleanTmp
     _ -> showHelp >> exitFailure
-  where
-    getAndExtract pId = do
-      res <- getTestCases pId
-      maybe
-        (putStrLn "Error: Failed to retrieve test cases." >> exitFailure)
-        (extractTestCase pId)
-        res
-    testAndSummarize pId exec = do
-      getAndExtract pId
-      total <- countTestCases pId
-      totalFailed <- runTestCases pId exec
-      putChar '\n'
-      showSummary total totalFailed
-    showSummary t f = do
-      PP.putDoc $ titleFormat (PP.text "SUMMARY") <> PP.line
-      if f == 0
-        then putStrLn "All test cases passed!"
-        else putStrLn $
-             showInt f . showString " of " . showInt t $ " test cases failed"
