@@ -103,7 +103,7 @@ getAndExtract :: ProblemID -> IO ()
 getAndExtract pId = do
   res <- getTestCases pId
   maybe
-    (putStrLn "Error: Failed to retrieve test cases." >> exitFailure)
+    (errorWithoutStackTrace "Failed to retrieve test cases")
     (extractTestCase pId)
     res
 
@@ -150,9 +150,10 @@ getExitCode (ExitFailure n) = n
 getExitCode ExitSuccess = 0
 
 parseFlags :: [String] -> Flags
-parseFlags ("-1":xs) = (parseFlags xs) {abortOnFail = True}
+parseFlags ("-l":xs) = (parseFlags xs) {abortOnFail = True}
 parseFlags (('-':'p':'=':prec):xs) = (parseFlags xs) {floatPrec = read prec}
-parseFlags (_:xs) = parseFlags xs
+parseFlags ("-p":prec:xs) = (parseFlags xs) {floatPrec = read prec}
+parseFlags (x:_) = errorWithoutStackTrace ("Unknown flag " ++ x)
 parseFlags [] = def
 
 --------------------------------------------------------------------------------
@@ -208,7 +209,13 @@ runAllTestCases :: ProblemID -> FilePath -> IO Int
 runAllTestCases pId execPath = do
   testCases <- readTestCases pId
   outcomes <- mapM (runTestCase execPath) testCases
-  return $ sum . map fromEnum $ outcomes
+  return $ length . filter id $ outcomes
+
+runPartialTestCases :: ProblemID -> FilePath -> IO Int
+runPartialTestCases pId execPath = do
+  testCases <- readTestCases pId
+  outcomes <- takeWhileM (runTestCase execPath) testCases
+  return $ length outcomes
 
 --------------------------------------------------------------------------------
 -- USER INTERFACE
@@ -235,7 +242,7 @@ helpText prog =
         f
         [ ("--help, -h", ["Show this help message."])
         , ("--version, -v", ["Show program version."])
-        , ("-1", ["Abort test on first failure"])
+        , ("--lazy, -l", ["Abort test on first failure."])
         ]
     commandInfo =
       map
@@ -267,11 +274,14 @@ showVer = do
   prog <- getProgName
   PP.putDoc $ verText prog
 
-testAndSummarize :: ProblemID -> FilePath -> IO ()
-testAndSummarize pId exec = do
+testAndSummarize :: Flags -> ProblemID -> FilePath -> IO ()
+testAndSummarize flags pId exec = do
   getAndExtract pId
   total <- countTestCases pId
-  totalPassed <- runAllTestCases pId exec
+  totalPassed <-
+    if abortOnFail flags
+      then runPartialTestCases pId exec
+      else runAllTestCases pId exec
   putChar '\n'
   showSummary total totalPassed
 
@@ -293,7 +303,7 @@ main = do
     ("--help":_) -> showHelp
     ["-v"] -> showVer
     ["--version"] -> showVer
-    ("test":pId:exec:flags) -> testAndSummarize pId exec
+    ("test":pId:exec:flags) -> testAndSummarize (parseFlags flags) pId exec
     ("get":pId:flags) -> getAndExtract pId
     ("clean":flags) -> cleanTmp
     _ -> showHelp >> exitFailure
