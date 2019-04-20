@@ -11,6 +11,8 @@ import qualified Data.Conduit.List as CL
 import Data.Hashable (hash)
 import Data.List
 import Data.Maybe.HT (toMaybe)
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Version (showVersion)
 import Network.HTTP.Simple
@@ -25,7 +27,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 
 type ProblemID = String
 
-type TestCase = (String, String)
+type TestCase = (T.Text, [T.Text])
 
 kattisDir :: FilePath
 kattisDir = "/tmp/kattis/"
@@ -86,8 +88,8 @@ readTestCases pId = do
   mapM f paths
   where
     f (x, y) = do
-      x' <- init <$> readFile x
-      y' <- readFile y
+      x' <- T.stripEnd <$> T.readFile x
+      y' <- map T.stripEnd . T.lines <$> T.readFile y
       return (x', y')
 
 titleFormat :: PP.Doc -> PP.Doc
@@ -106,13 +108,13 @@ runTestCase execPath (inp, ans) =
       , std_err = CreatePipe
       , delegate_ctlc = True
       } $ \(Just hin) (Just hout) (Just herr) hproc -> do
-    hPutStr hin inp
+    T.hPutStr hin inp
     hClose hin
     exitCode <- waitForProcess hproc
-    out <- hGetContents hout
-    err <- hGetContents herr
+    out <- map T.stripEnd . T.lines <$> T.hGetContents hout
+    err <- T.hGetContents herr
     let outputMatched = out == ans
-        hasErrorMsg = not . null $ err
+        hasErrorMsg = not . T.null $ err
         hasNonZeroExit = exitCode /= ExitSuccess
         hasFailed = not outputMatched || hasErrorMsg || hasNonZeroExit
     putChar '\n'
@@ -123,16 +125,16 @@ runTestCase execPath (inp, ans) =
           PP.putDoc $
           PP.vsep
             [ PP.text "Input:"
-            , PP.string (indent inp)
+            , indent $ T.lines inp
             , PP.text "Expected output:"
-            , PP.string (indent ans)
+            , indent ans
             , PP.text "Your output:"
-            , PP.string (indent out)
+            , indent out
             ] <>
           PP.line
         when hasErrorMsg $
           PP.putDoc $
-          PP.text "Error message:" PP.<$> PP.string (indent err) <> PP.line
+          PP.text "Error message:" PP.<$> indent (T.lines err) <> PP.line
         when hasNonZeroExit $
           PP.putDoc $
           PP.text "Exit code:" PP.<+> PP.int (getExitCode exitCode) <> PP.line
@@ -140,7 +142,8 @@ runTestCase execPath (inp, ans) =
     return hasFailed
   where
     header x = titleFormat (PP.text "Test Case" PP.<+> x)
-    indent = init . unlines . map (showString "> ") . lines . (++ " ")
+    indent =
+      PP.vsep . map (\x -> PP.blue PP.rangle PP.<+> (PP.text . T.unpack $ x))
 
 runTestCases :: ProblemID -> FilePath -> IO Int
 runTestCases pId execPath = do
@@ -172,7 +175,7 @@ helpText prog =
   PP.line
   where
     description = "Test Kattis solutions locally"
-    usageStr = "[ --help | --version | COMMAND ]"
+    usageStr = "[ --help | --version | COMMAND ] [ OPTIONS ]"
     optionInfo =
       map
         f
@@ -219,9 +222,9 @@ main = do
     ("--help":_) -> showHelp
     ["-v"] -> showVer
     ["--version"] -> showVer
-    ["test", pId, exec] -> testAndSummarize pId exec
-    ["get", pId] -> getAndExtract pId
-    ["clean"] -> cleanTmp
+    ("test":pId:exec:opt) -> testAndSummarize pId exec
+    ("get":pId:opt) -> getAndExtract pId
+    ("clean":opt) -> cleanTmp
     _ -> showHelp >> exitFailure
   where
     getAndExtract pId = do
