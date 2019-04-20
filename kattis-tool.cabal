@@ -25,6 +25,7 @@ executable kat
                      , hashable >= 1.2
                      , http-conduit >= 2.3
                      , process >= 1.6
+                     , text >= 1.2
                      , time >= 1.8
                      , utility-ht >= 0.0.14
                      , zip >= 1.2
