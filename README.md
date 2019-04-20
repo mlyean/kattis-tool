@@ -2,8 +2,8 @@
 
 ## About
 
-This is a simple tool written in Haskell to easily download and
-run the provided sample test cases on your machine.
+This is a simple command line tool written in Haskell to easily
+download and run the provided sample test cases on your machine.
 
 ## Installation
 
@@ -41,14 +41,22 @@ command:
 ```
 kat test hello ./main.o
 ```
-Note that EXEC is the command to run your (already compiled) program.
+Note that `EXEC` is the command to run your (already compiled) program.
 
 The test cases are downloaded into `/tmp/kattis/`. If for some reason
-the test cases got corrupted (which should never happen, it would
-probably just fail), you can run `kat clean` to clear the downloads.
+the test cases got corrupted (which should never happen, the download
+would probably just fail), you can run `kat clean` to clear the
+downloads.
 
 If the test cases were already downloaded and still exists, they will
 be reused on subsequent runs.
 
 You need an internet connection to download the test cases. You can
-download and cache the test cases for off-line use using `kat get ID`.
+download and cache the test cases off-line using `kat get ID`.
+
+## Ideas
+
+A list of features I may implement in the future:
+
+* Upload file directly from command line
+* Check floating point numbers to a certain accuracy
