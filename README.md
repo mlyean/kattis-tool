@@ -2,7 +2,7 @@
 
 ## About
 
-This is a simple command line tool written in Haskell to easily
+`kat` is a simple command line tool written in Haskell to easily
 download and run the provided sample test cases on your machine.
 
 ## Installation
@@ -11,8 +11,8 @@ Ensure you already have Haskell `stack` installed.
 
 To install, clone this repository and run `stack install`.
 
-Note this has only been tested on Linux, and will not (currently)
-work on Windows.
+Note this has only been tested to work on Linux, and will not
+(currently) work on Windows.
 
 ## Usage
 
@@ -35,28 +35,27 @@ Available commands:
   clean            Remove all temporary files.
 ```
 
-The main command here is `kat test`. To test your solution `main.o`
-on the problem with ID `hello`, for example, run the following
-command:
+The main command here is `kat test`. For example, to test your solution
+`main.cpp` on the problem with ID `abc`, you first need to compile your
+solution.
+```sh
+g++ -o ./main -O2 main.cpp
+kat test hello ./main
 ```
-kat test hello ./main.o
-```
-Note that `EXEC` is the command to run your (already compiled) program.
 
 The test cases are downloaded into `/tmp/kattis/`. If for some reason
-the test cases got corrupted (which should never happen, the download
-would probably just fail), you can run `kat clean` to clear the
-downloads.
+the download was corrupted (which should never happen, it should just
+fail), you can run `kat clean` to clear the cached files.
 
-If the test cases were already downloaded and still exists, they will
+If the test cases were previously downloaded and still exists, they will
 be reused on subsequent runs.
 
 You need an internet connection to download the test cases. You can
-download and cache the test cases off-line using `kat get ID`.
+download and cache the files off-line using `kat get ID`.
 
 ## Ideas
 
 A list of features I may implement in the future:
 
-* Upload file directly from command line
-* Check floating point numbers to a certain accuracy
+* Submit solutions directly from command line
+* Check floating point numbers to a certain precision
