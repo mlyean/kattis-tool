@@ -174,11 +174,12 @@ runTestCase execPath (inp, ans) =
     err <- T.hGetContents herr
     let outputMatched = out == ans
         hasErrorMsg = not . T.null $ err
-        hasNonZeroExit = exitCode /= ExitSuccess
-        hasFailed = not outputMatched || hasErrorMsg || hasNonZeroExit
+        hasZeroExit = exitCode == ExitSuccess
+        passed = outputMatched && not hasErrorMsg && hasZeroExit
     putChar '\n'
-    if hasFailed
-      then do
+    if passed
+      then PP.putDoc $ header (PP.green $ PP.text "PASSED") <> PP.line
+      else do
         PP.putDoc $ header (PP.red $ PP.text "FAILED") <> PP.line
         unless outputMatched $
           PP.putDoc $
@@ -194,11 +195,10 @@ runTestCase execPath (inp, ans) =
         when hasErrorMsg $
           PP.putDoc $
           PP.text "Error message:" PP.<$> indent (T.lines err) <> PP.line
-        when hasNonZeroExit $
+        unless hasZeroExit $
           PP.putDoc $
           PP.text "Exit code:" PP.<+> PP.int (getExitCode exitCode) <> PP.line
-      else PP.putDoc $ header (PP.green $ PP.text "PASSED") <> PP.line
-    return hasFailed
+    return passed
   where
     header x = titleFormat (PP.text "Test Case" PP.<+> x)
     indent =
@@ -257,7 +257,7 @@ showHelp = do
 
 verText :: String -> PP.Doc
 verText prog =
-  PP.text prog PP.<+> PP.blue (PP.text $ showVersion version) <> PP.line <>
+  PP.text prog PP.<+> PP.blue (PP.text $ showVersion version) PP.<$>
   PP.text "Author:" PP.<+>
   PP.blue (PP.text authors) <>
   PP.line
@@ -267,19 +267,23 @@ showVer = do
   prog <- getProgName
   PP.putDoc $ verText prog
 
+testAndSummarize :: ProblemID -> FilePath -> IO ()
 testAndSummarize pId exec = do
   getAndExtract pId
   total <- countTestCases pId
-  totalFailed <- runAllTestCases pId exec
+  totalPassed <- runAllTestCases pId exec
   putChar '\n'
-  showSummary total totalFailed
+  showSummary total totalPassed
 
-showSummary t f = do
-  PP.putDoc $ titleFormat (PP.text "SUMMARY") <> PP.line
-  if f == 0
-    then putStrLn "All test cases passed!"
-    else putStrLn $
-         showInt f . showString " of " . showInt t $ " test cases failed"
+showSummary :: Int -> Int -> IO ()
+showSummary t p =
+  PP.putDoc $
+  titleFormat (PP.text "SUMMARY") PP.<$>
+  (if p == t
+     then PP.text "All test cases passed!"
+     else PP.int p PP.<+> PP.text "of" PP.<+> PP.int t PP.<+>
+          PP.text "test cases passed.") <>
+  PP.line
 
 main :: IO ()
 main = do
