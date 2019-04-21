@@ -42,6 +42,17 @@ you first need to compile your solution, then run `kat test` on it.
 g++ -o ./main -O2 main.cpp
 kat test abc ./main
 ```
+If you passed all the test cases, you should see the following output:
+```
+$ kat test abc ./main
+
+-- Test Case PASSED --
+
+-- Test Case PASSED --
+
+-- SUMMARY --
+All test cases passed!
+```
 
 The test cases are downloaded into `/tmp/kattis/`. If for some reason
 the download was corrupted (which should never happen, it should just
