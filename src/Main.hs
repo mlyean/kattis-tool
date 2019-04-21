@@ -35,12 +35,12 @@ type ProblemID = String
 type TestCase = (T.Text, [T.Text])
 
 data Flags = Flags
-  { abortOnFail :: Bool
-  , floatPrec :: Int
+  { lazyRun :: Bool -- Abort running tests on first failure
+  , floatPrec :: Int -- Floating point precision
   }
 
 instance Default Flags where
-  def = Flags {abortOnFail = False, floatPrec = 6}
+  def = Flags {lazyRun = False, floatPrec = 8}
 
 --------------------------------------------------------------------------------
 -- CONSTANTS
@@ -150,7 +150,7 @@ getExitCode (ExitFailure n) = n
 getExitCode ExitSuccess = 0
 
 parseFlags :: [String] -> Flags
-parseFlags ("-l":xs) = (parseFlags xs) {abortOnFail = True}
+parseFlags ("-l":xs) = (parseFlags xs) {lazyRun = True}
 parseFlags (('-':'p':'=':prec):xs) = (parseFlags xs) {floatPrec = read prec}
 parseFlags ("-p":prec:xs) = (parseFlags xs) {floatPrec = read prec}
 parseFlags (x:_) = errorWithoutStackTrace ("Unknown flag " ++ x)
@@ -242,7 +242,7 @@ helpText prog =
         f
         [ ("--help, -h", ["Show this help message."])
         , ("--version, -v", ["Show program version."])
-        , ("--lazy, -l", ["Abort test on first failure."])
+        , ("--lazy, -l", ["Abort running tests on first failure."])
         ]
     commandInfo =
       map
@@ -279,19 +279,19 @@ testAndSummarize flags pId exec = do
   getAndExtract pId
   total <- countTestCases pId
   totalPassed <-
-    if abortOnFail flags
+    if lazyRun flags
       then runPartialTestCases pId exec
       else runAllTestCases pId exec
   putChar '\n'
   showSummary total totalPassed
 
 showSummary :: Int -> Int -> IO ()
-showSummary t p =
+showSummary total passed =
   PP.putDoc $
   titleFormat (PP.text "SUMMARY") PP.<$>
-  (if p == t
+  (if passed == total
      then PP.text "All test cases passed!"
-     else PP.int p PP.<+> PP.text "of" PP.<+> PP.int t PP.<+>
+     else PP.int passed PP.<+> PP.text "of" PP.<+> PP.int total PP.<+>
           PP.text "test cases passed.") <>
   PP.line
 
