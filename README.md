@@ -22,11 +22,12 @@ For usage, run `kat --help`:
 $ kat --help
 kat - Test Kattis solutions locally
 
-Usage: kat [ --help | --version | COMMAND ]
+Usage: kat [ --help | --version | COMMAND [ OPTIONS ] ]
 
 Available options:
   --help, -h       Show this help message.
   --version, -v    Show program version.
+  --lazy, -l       Abort running tests on first failure.
 
 Available commands:
   test ID EXEC     Run test cases of the given problem ID on EXEC.
@@ -35,12 +36,11 @@ Available commands:
   clean            Remove all temporary files.
 ```
 
-The main command here is `kat test`. For example, to test your solution
-`main.cpp` on the problem with ID `abc`, you first need to compile your
-solution.
+For example, to test your solution `main.cpp` on the problem with ID `abc`,
+you first need to compile your solution, then run `kat test` on it.
 ```sh
 g++ -o ./main -O2 main.cpp
-kat test hello ./main
+kat test abc ./main
 ```
 
 The test cases are downloaded into `/tmp/kattis/`. If for some reason
