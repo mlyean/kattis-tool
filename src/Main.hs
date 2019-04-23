@@ -45,8 +45,11 @@ instance Default Flags where
 --------------------------------------------------------------------------------
 -- CONSTANTS
 --------------------------------------------------------------------------------
-authors :: String
-authors = "mlyean"
+author :: String
+author = "mlyean"
+
+description :: String
+description = "Test Kattis solutions locally"
 
 kattisDir :: FilePath
 kattisDir = "/tmp/kattis/"
@@ -62,39 +65,51 @@ testCaseUrl pId =
 problemDir :: ProblemID -> FilePath
 problemDir pId = showString kattisDir . showString pId $ "/"
 
+pIdHash :: ProblemID -> Word
+pIdHash = fromIntegral . hash
+
 --------------------------------------------------------------------------------
--- FILES MANAGEMENT
+-- FILE MANAGEMENT
 --------------------------------------------------------------------------------
-getTestCases :: ProblemID -> IO (Maybe String)
+genTmpOutFilePath :: ProblemID -> IO (FilePath, Handle)
+genTmpOutFilePath pId = do
+  dlTime <- round <$> getPOSIXTime
+  let file =
+        showString kattisDir .
+        showString pId .
+        showChar '-' . showHex (pIdHash pId) . showChar '-' . showHex dlTime $
+        ".zip.part"
+  hin <- openBinaryFile file WriteMode
+  return (file, hin)
+
+getTestCases :: ProblemID -> IO String
 getTestCases pId = do
-  createDirectoryIfMissing True kattisDir
-  ft <- round <$> getPOSIXTime
-  let fh = fromIntegral . hash $ pId :: Word
-      outFile =
-        showString kattisDir . showString pId . showChar '-' . showHex fh $
-        ".zip"
   alreadyExists <- doesFileExist outFile
   if alreadyExists
-    then return (Just outFile)
+    then return outFile
     else do
-      let tmpOutFile =
-            showString kattisDir .
-            showString pId .
-            showChar '-' . showHex fh . showChar '-' . showHex ft $
-            ".zip.part"
+      createDirectoryIfMissing True kattisDir
       request <- parseRequest . testCaseUrl $ pId
-      file <- openBinaryFile tmpOutFile WriteMode
+      (tmpFile, hin) <- genTmpOutFilePath pId
       success <-
-        handle (\(_ :: HttpException) -> return False) $
+        handle
+          (\(_ :: HttpException) ->
+             errorWithoutStackTrace "Failed to retrieve test cases") $
         httpSink request $ \response -> do
           let success = getResponseStatusCode response == 200
-          when success $ CL.mapM_ (BS.hPut file)
+          when success $ CL.mapM_ (BS.hPut hin)
           return success
-      hClose file
+      hClose hin
       if success
-        then renameFile tmpOutFile outFile
-        else removeFile tmpOutFile
-      return $ toMaybe success outFile
+        then renameFile tmpFile outFile
+        else removeFile tmpFile
+      return outFile
+  where
+    outFile :: FilePath
+    outFile =
+      showString kattisDir .
+      showString pId . showChar '-' . showHex (pIdHash pId) $
+      ".zip"
 
 extractTestCase :: ProblemID -> FilePath -> IO ()
 extractTestCase pId zipPath = withArchive zipPath (unpackInto $ problemDir pId)
@@ -102,10 +117,7 @@ extractTestCase pId zipPath = withArchive zipPath (unpackInto $ problemDir pId)
 getAndExtract :: ProblemID -> IO ()
 getAndExtract pId = do
   res <- getTestCases pId
-  maybe
-    (errorWithoutStackTrace "Failed to retrieve test cases")
-    (extractTestCase pId)
-    res
+  extractTestCase pId res
 
 cleanTmp :: IO ()
 cleanTmp = do
@@ -121,7 +133,9 @@ listTestCases pId = do
   return $ zip (f ".in" files) (f ".ans" files)
   where
     fp = problemDir pId
-    f ext = map (fp ++) . filter (ext `isSuffixOf`)
+    prependDir dir = map (dir ++)
+    filterExt ext = filter (ext `isSuffixOf`)
+    f ext = prependDir fp . filterExt ext
 
 readTestCases :: ProblemID -> IO [TestCase]
 readTestCases pId = do
@@ -235,7 +249,6 @@ helpText prog =
     ] <>
   PP.line
   where
-    description = "Test Kattis solutions locally"
     usageStr = "[ --help | --version | COMMAND [ OPTIONS ] ]"
     optionInfo =
       map
@@ -266,7 +279,7 @@ verText :: String -> PP.Doc
 verText prog =
   PP.text prog PP.<+> PP.blue (PP.text $ showVersion version) PP.<$>
   PP.text "Author:" PP.<+>
-  PP.blue (PP.text authors) <>
+  PP.blue (PP.text author) <>
   PP.line
 
 showVer :: IO ()
